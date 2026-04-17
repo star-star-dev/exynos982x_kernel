@@ -2,6 +2,15 @@ name: Build ArtisanKRNL
 
 on:
   workflow_dispatch:
+    inputs:
+      ksu_branch:
+        description: 'Choose KernelSU version'
+        required: true
+        default: 'legacy_susfs'
+        type: choice
+        options:
+          - 'legacy_susfs'
+          - 'legacy_susfs-v2'
 
 jobs:
   build:
@@ -10,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [d1xks]
+        device: [d1, d1xks, d2x, d2s, d2xks]
 
     steps:
       - name: Checkout source
@@ -19,15 +28,16 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Set up build environment
+      - name: Setup build environment
         run: |
           sudo apt update
           DEBIAN_FRONTEND=noninteractive sudo apt install -yq \
             p7zip-full jq attr ccache clang ffmpeg golang \
             libbrotli-dev libgtest-dev libprotobuf-dev libunwind-dev libpcre2-dev \
             libzstd-dev linux-modules-extra-$(uname -r) lld protobuf-compiler webp \
-            curl xxd patchelf flex bison libarchive-tools build-essential pcre2-utils
-          sudo modprobe erofs f2fs
+            curl xxd patchelf flex bison libarchive-tools build-essential pcre2-utils \
+            git-core zip zlib1g-dev libc6-dev-i386 lib32z1-dev
+          sudo modprobe erofs f2fs || true
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -37,15 +47,33 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo apt clean
 
+      - name: Setup KernelSU
+        run: |
+          if [ -d "./KernelSU" ]; then rm -rf "./KernelSU"; fi
+          if [ -d "./drivers/KernelSU" ]; then rm -rf "./drivers/KernelSU"; fi 
+
+          if [ "${{ github.event.inputs.ksu_branch }}" = "legacy_susfs" ]; then
+            echo "Using legacy_susfs branch for KernelSU-Next"
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy_susfs
+          else
+            echo "Using legacy_susfs-v2 branch for KernelSU-Next"
+            curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/stable/kernel/setup.sh" | bash -s origin/legacy-susfs-v2
+          fi
+
       - name: Make build script executable
         run: chmod +x build.sh
 
-      - name: Build kernel (${{ matrix.target }})
+      - name: Build kernel
         run: |
-          ./build.sh -m ${{ matrix.target }} -k y -r n
+          ./build.sh -m ${{ matrix.device }} -k y -r n
 
-      - name: Upload artifact (${{ matrix.target }})
+      - name: Prepare artifacts
+        run: |
+          mkdir -p ${{ github.workspace }}/build/out/zip_files
+          find ${{ github.workspace }}/build/out/ -type f -name "*.zip" -exec cp {} ${{ github.workspace }}/build/out/zip_files/ \; || true
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-${{ matrix.target }}
-          path: build/out/${{ matrix.target }}/*.zip
+          name: "ArtisanKRNL-${{ github.event.inputs.ksu_branch }}-${{ matrix.device }}"
+          path: ${{ github.workspace }}/build/out/zip_files/
