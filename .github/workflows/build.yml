@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       ksu_branch:
-        description: 'Choose KernelSU version'
+        description: 'KernelSU version'
         required: true
         default: 'legacy_susfs'
         type: choice
@@ -22,8 +22,13 @@ jobs:
         device: [d1, d1xks, d2x, d2s, d2xks]
 
     steps:
+      - name: Cleanup workspace
+        run: |
+          sudo rm -rf "$GITHUB_WORKSPACE"
+          mkdir -p "$GITHUB_WORKSPACE"
+
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
           fetch-depth: 0
@@ -37,43 +42,46 @@ jobs:
             libzstd-dev linux-modules-extra-$(uname -r) lld protobuf-compiler webp \
             curl xxd patchelf flex bison libarchive-tools build-essential pcre2-utils \
             git-core zip zlib1g-dev libc6-dev-i386 lib32z1-dev
-          sudo modprobe erofs f2fs || true
+          
+          sudo modprobe erofs f2fs 2>/dev/null || true
+          
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
           sudo apt clean
+          docker system prune -af --volumes 2>/dev/null || true
 
       - name: Setup KernelSU
         run: |
-          if [ -d "./KernelSU" ]; then rm -rf "./KernelSU"; fi
-          if [ -d "./drivers/KernelSU" ]; then rm -rf "./drivers/KernelSU"; fi 
-
+          rm -rf ./KernelSU-Next ./drivers/KernelSU-Next
+          
           if [ "${{ github.event.inputs.ksu_branch }}" = "legacy_susfs" ]; then
-            echo "Using legacy_susfs branch for KernelSU-Next"
+            echo "Installing KernelSU-Next (legacy_susfs branch)..."
             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy_susfs
           else
-            echo "Using legacy_susfs-v2 branch for KernelSU-Next"
-            curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/stable/kernel/setup.sh" | bash -s origin/legacy-susfs-v2
+            echo "Installing KernelSU-Next (legacy_susfs-v2 branch)..."
+            curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/stable/kernel/setup.sh" | bash -s legacy-susfs-v2
           fi
 
       - name: Make build script executable
         run: chmod +x build.sh
 
       - name: Build kernel
-        run: |
-          ./build.sh -m ${{ matrix.device }} -k y -r n
+        run: ./build.sh -m ${{ matrix.device }} -k y -r n
 
       - name: Prepare artifacts
         run: |
-          mkdir -p ${{ github.workspace }}/build/out/zip_files
-          find ${{ github.workspace }}/build/out/ -type f -name "*.zip" -exec cp {} ${{ github.workspace }}/build/out/zip_files/ \; || true
+          ARTIFACT_DIR="${{ github.workspace }}/build/out/zip_files"
+          mkdir -p "$ARTIFACT_DIR"
+          find "${{ github.workspace }}/build/out/" -type f -name "*.zip" -exec cp {} "$ARTIFACT_DIR/" \;
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: "ArtisanKRNL-${{ github.event.inputs.ksu_branch }}-${{ matrix.device }}"
           path: ${{ github.workspace }}/build/out/zip_files/
+          if-no-files-found: warn
+          retention-days: 90
