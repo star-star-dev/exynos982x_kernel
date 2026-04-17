@@ -56,14 +56,53 @@ jobs:
 
       - name: Setup KernelSU
         run: |
-          rm -rf ./KernelSU-Next ./drivers/KernelSU-Next
+          rm -rf ./KernelSU-Next ./drivers/KernelSU-Next ./drivers/kernelsu
+          
+          sed -i '/KernelSU-Next/d' drivers/Makefile 2>/dev/null || true
+          sed -i '/kernelsu/d' drivers/Makefile 2>/dev/null || true
+          sed -i '/KernelSU-Next/d' drivers/Kconfig 2>/dev/null || true
+          sed -i '/kernelsu/d' drivers/Kconfig 2>/dev/null || true
           
           if [ "${{ github.event.inputs.ksu_branch }}" = "legacy_susfs" ]; then
             echo "Installing KernelSU-Next (legacy_susfs branch)..."
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy_susfs
+            git clone https://github.com/sidex15/KernelSU-Next.git KernelSU-Next
+            cd KernelSU-Next
+            git fetch --all
+            git checkout origin/legacy-susfs-v2
+            cd ..
+            curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/stable/kernel/setup.sh" | bash -s origin/legacy-susfs-v2
           else
-            echo "Installing KernelSU-Next (legacy_susfs-v2 branch)..."
-            curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/stable/kernel/setup.sh" | bash -s legacy-susfs-v2
+            echo "Installing KernelSU-Next (legacy_susfs-v2 branch) manually..."
+            
+            git clone https://github.com/sidex15/KernelSU-Next.git
+            cd KernelSU-Next
+            git fetch --all
+            git checkout origin/legacy-susfs-v2
+            cd ..
+            
+            KCONFIG_PATH=$(find ./KernelSU-Next -name "Kconfig" | head -1)
+            KCONFIG_DIR=$(dirname "$KCONFIG_PATH")
+            RELATIVE_PATH="${KCONFIG_DIR#./KernelSU-Next/}"
+            
+            echo "Found Kconfig at: $KCONFIG_PATH"
+            echo "Relative path: $RELATIVE_PATH"
+            
+            rm -rf ./drivers/KernelSU-Next
+            mkdir -p "./drivers/KernelSU-Next"
+            
+            if [ "$RELATIVE_PATH" != "kernel" ] && [ -d "./KernelSU-Next/$RELATIVE_PATH" ]; then
+              ln -sf "$(pwd)/KernelSU-Next/$RELATIVE_PATH" "$(pwd)/drivers/KernelSU-Next"
+            else
+              ln -sf "$(pwd)/KernelSU-Next" "$(pwd)/drivers/KernelSU-Next"
+            fi
+            
+            if ! grep -q "KernelSU-Next" drivers/Makefile; then
+              echo "obj-y += KernelSU-Next/" >> drivers/Makefile
+            fi
+            
+            if ! grep -q "KernelSU-Next/Kconfig" drivers/Kconfig; then
+              echo 'source "drivers/KernelSU-Next/Kconfig"' >> drivers/Kconfig
+            fi
           fi
 
       - name: Make build script executable
