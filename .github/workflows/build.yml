@@ -65,12 +65,7 @@ jobs:
           
           if [ "${{ github.event.inputs.ksu_branch }}" = "legacy_susfs" ]; then
             echo "Installing KernelSU-Next (legacy_susfs branch)..."
-            git clone https://github.com/sidex15/KernelSU-Next.git KernelSU-Next
-            cd KernelSU-Next
-            git fetch --all
-            git checkout origin/legacy-susfs-v2
-            cd ..
-            curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/stable/kernel/setup.sh" | bash -s origin/legacy-susfs-v2
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy_susfs
           else
             echo "Installing KernelSU-Next (legacy_susfs-v2 branch) manually..."
             
@@ -80,21 +75,19 @@ jobs:
             git checkout origin/legacy-susfs-v2
             cd ..
             
-            KCONFIG_PATH=$(find ./KernelSU-Next -name "Kconfig" | head -1)
-            KCONFIG_DIR=$(dirname "$KCONFIG_PATH")
-            RELATIVE_PATH="${KCONFIG_DIR#./KernelSU-Next/}"
+            echo "=== Debug: KernelSU-Next directory structure ==="
+            ls -la KernelSU-Next/
+            echo ""
+            echo "=== Finding Kconfig files ==="
+            find ./KernelSU-Next -name "Kconfig"
+            echo ""
             
-            echo "Found Kconfig at: $KCONFIG_PATH"
-            echo "Relative path: $RELATIVE_PATH"
-            
+            # Create drivers/KernelSU-Next as a symlink to the actual kernel directory
             rm -rf ./drivers/KernelSU-Next
-            mkdir -p "./drivers/KernelSU-Next"
+            ln -sf "$(pwd)/KernelSU-Next/kernel" "$(pwd)/drivers/KernelSU-Next"
             
-            if [ "$RELATIVE_PATH" != "kernel" ] && [ -d "./KernelSU-Next/$RELATIVE_PATH" ]; then
-              ln -sf "$(pwd)/KernelSU-Next/$RELATIVE_PATH" "$(pwd)/drivers/KernelSU-Next"
-            else
-              ln -sf "$(pwd)/KernelSU-Next" "$(pwd)/drivers/KernelSU-Next"
-            fi
+            echo "=== drivers/KernelSU-Next contents ==="
+            ls -la drivers/KernelSU-Next/ || echo "Link broken!"
             
             if ! grep -q "KernelSU-Next" drivers/Makefile; then
               echo "obj-y += KernelSU-Next/" >> drivers/Makefile
