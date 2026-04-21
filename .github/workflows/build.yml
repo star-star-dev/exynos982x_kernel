@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        device: [d2x, d2s, d2xks, d1, d1xks, beyond0lte, beyond0lteks, beyond1lte, beyond1lteks, beyond2lte, beyond2lteks, beyondx, beyondxks]
+        device: [d2x, d2s, d2xks, d1, d1xks, beyond0lte, beyond1lte, beyond2lte, beyondx]
 
     steps:
       - name: Cleanup workspace
